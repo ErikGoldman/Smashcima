@@ -21,6 +21,7 @@ from smashcima.geometry.Point import Point
 from smashcima.synthesis.LineSynthesizer import LineSynthesizer
 from smashcima.scene.SmuflLabels import SmuflLabels
 from typing import List, Optional
+from .StemModel import StemLengths
 from collections import Counter
 import cv2
 import numpy as np
@@ -28,6 +29,7 @@ import random
 import math
 
 
+DEFAULT_STEM_LENGTH = 5.0 # mm
 MAX_BEAM_SLOPE = 0.35
 BEAM_SLOPE_JITTER = 0.1
 BEAM_SPACING = 1.5 # TODO: guess or synth somehow
@@ -43,6 +45,9 @@ class BeamStemSynthesizer:
     def __init__(self, line_synthesizer: LineSynthesizer, rng: random.Random):
         self.line_synthesizer = line_synthesizer
         self.rng = rng
+        self.stem_lengths: Optional[StemLengths] = None
+        """Learned stem lengths for the system being drawn; without them,
+        every stem is DEFAULT_STEM_LENGTH long"""
 
     def synthesize_beams_and_stems_for_measure(
         self,
@@ -107,7 +112,7 @@ class BeamStemSynthesizer:
         stem_center = page_space.transform_from(center_notehead.glyph.space).apply_to(
             self.get_stem_base_point(center_notehead, stem_value)
         )
-        stem_tip = self.get_stem_tip_point(stem_center, stem_value)
+        stem_tip = self.get_stem_tip_point(stem_center, stem_value, chord)
 
         # synthesize the stem glyph
         glyph = self.line_synthesizer.synthesize_line(
@@ -180,12 +185,15 @@ class BeamStemSynthesizer:
     def get_stem_tip_point(
         self,
         base_point: Point,
-        orientation: StemValue
+        orientation: StemValue,
+        chord: Optional[Chord] = None
     ) -> Point:
-        """Returns the stem tip point in paper space, given the base point
-        also in paper space"""
-        # TODO: sample from a learned distribution
-        delta_vector = Vector2(0.0, -5.0)
+        """Returns the stem tip point in paper space, given the point where
+        the stem leaves the notehead nearest its tip, also in paper space"""
+        length = None
+        if self.stem_lengths is not None and chord is not None:
+            length = self.stem_lengths.length_of(chord)
+        delta_vector = Vector2(0.0, -(length or DEFAULT_STEM_LENGTH))
 
         if orientation == StemValue.down:
             delta_vector = -delta_vector

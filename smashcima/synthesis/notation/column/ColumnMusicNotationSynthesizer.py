@@ -28,6 +28,8 @@ from ...LineSynthesizer import LineSynthesizer
 from ...MusicNotationSynthesizer import MusicNotationSynthesizer
 from ..BeamStemSynthesizer import BeamStemSynthesizer
 from ..MarksSynthesizer import MarksSynthesizer, SystemNotes
+from ..StemModel import StemGNN, StemLengths
+from smashcima.scene.visual.Notehead import Notehead
 from .BarlinesColumn import barline_parts, measure_barline_parts, \
     synthesize_barlines_column
 from .ClefsColumn import synthesize_change_clefs, synthesize_header_clefs
@@ -150,6 +152,8 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
         self.beam_stem_synthesizer = beam_stem_synthesizer
         self.rng = rng
         self.marks_synthesizer = MarksSynthesizer(glyph_synthesizer, rng)
+        self.stem_model: Optional[StemGNN] = StemGNN()
+        "Predicts stem lengths from context; None draws them all alike"
 
         # The following values control the synthesizer.
         # The page-flowing options are set to respect explicit breaks
@@ -405,6 +409,10 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
 
         # === phase 4: synthesizing beams, stems and flags ===
 
+        self.beam_stem_synthesizer.stem_lengths = self.predicted_stem_lengths(
+            page_space, staves, score, system
+        )
+
         for i in range(system.measure_count):
             score_measure = score.get_score_measure(
                 system.first_measure_index + i
@@ -466,6 +474,37 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
                 start_point=Point(*(staff_edge(staves[first], 4).vector + left)),
                 end_point=Point(*(staff_edge(staves[last], -4).vector + left))
             )
+
+    def predicted_stem_lengths(
+        self,
+        page_space: AffineSpace,
+        staves: List[StaffVisual],
+        score: Score,
+        system: System
+    ) -> Optional[StemLengths]:
+        if self.stem_model is None:
+            return None
+        chords_by_staff: Dict[int, List[Chord]] = {}
+        seen = set()
+        for i in range(system.measure_count):
+            score_measure = score.get_score_measure(system.first_measure_index + i)
+            for score_event in score_measure.events:
+                for event in score_event.events:
+                    for durable in event.durables:
+                        if not isinstance(durable, Note):
+                            continue
+                        chord = Chord.of_note(durable)
+                        if id(chord) in seen:
+                            continue
+                        seen.add(id(chord))
+                        staff = Notehead.of_note(chord.notes[0]).staff
+                        chords_by_staff.setdefault(staves.index(staff), []).append(chord)
+        lengths = StemLengths(self.stem_model, self.rng)
+        for staff_index, chords in chords_by_staff.items():
+            staff = staves[staff_index]
+            left = page_space.transform_from(staff.space).apply_to(Point(0, 0)).x
+            lengths.predict_staff(chords, page_space, left)
+        return lengths
 
     def system_notes(
         self,
