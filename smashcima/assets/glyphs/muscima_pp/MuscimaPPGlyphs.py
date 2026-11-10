@@ -58,7 +58,8 @@ class MuscimaPPGlyphs(AssetBundle):
     def version(self) -> int:
         # 2: ties, slurs, tuplet 3s, accents, tenutos, heavy barlines,
         # repeat dots, loose 0s and 1s; MUSCIMA++ v2 test pages left out
-        return 2
+        # 3: millimetres extracted with 25.4 to the inch, not 24.4
+        return 3
 
     @property
     def symbol_repository_path(self) -> Path:

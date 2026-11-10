@@ -110,15 +110,27 @@ def pen_width_px(bitmap: np.ndarray) -> float:
 
 
 def with_pen_width_of(curve: np.ndarray, sample: np.ndarray) -> np.ndarray:
-    """The stretched curve with ink made solid again and thickened back to
-    the sample's stroke, which squashing it thinned"""
+    """The stretched curve with ink made solid again and its stroke brought
+    back to the sample's: squashing a sample thins it, enlarging thickens it"""
     alpha = np.where(curve[:, :, 3] > 40, 255, 0).astype(np.uint8)
-    solid = np.dstack([np.zeros_like(alpha)] * 3 + [alpha])
-    missing = min(MAX_THICKENING_PX, pen_width_px(sample) - pen_width_px(solid))
-    if missing >= 1:
-        kernel = np.ones((int(round(missing)) + 1, 1), np.uint8)
-        solid[:, :, 3] = cv2.dilate(alpha, kernel)
-    return solid
+    change = pen_width_px(sample) - pen_width_px(
+        np.dstack([np.zeros_like(alpha)] * 3 + [alpha])
+    )
+    if change >= 1:
+        kernel = np.ones((int(round(min(MAX_THICKENING_PX, change))) + 1, 1), np.uint8)
+        alpha = cv2.dilate(alpha, kernel)
+    elif change <= -1:
+        kernel = np.ones((int(round(-change)) + 1, 1), np.uint8)
+        alpha = cv2.erode(alpha, kernel)
+    return np.dstack([np.zeros_like(alpha)] * 3 + [alpha])
+
+
+def resized(bitmap: np.ndarray, width_px: int, height_px: int) -> np.ndarray:
+    """Area averaging when shrinking; when enlarging it repeats pixels into
+    steps, so interpolate instead"""
+    shrinking = width_px <= bitmap.shape[1] and height_px <= bitmap.shape[0]
+    return cv2.resize(bitmap, (width_px, height_px),
+                      interpolation=cv2.INTER_AREA if shrinking else cv2.INTER_LINEAR)
 
 
 def curve_glyph(
@@ -139,10 +151,7 @@ def curve_glyph(
         bitmap = bitmap[::-1]
     width_px = max(2, int(round(mm_to_px(end.x - start.x, sprite.dpi))))
     height_px = max(2, int(round(mm_to_px(height, sprite.dpi))))
-    curve = with_pen_width_of(
-        cv2.resize(bitmap, (width_px, height_px), interpolation=cv2.INTER_AREA),
-        bitmap
-    )
+    curve = with_pen_width_of(resized(bitmap, width_px, height_px), bitmap)
 
     # shear columns so the ends meet start and end; the ends of a curve
     # bowing up sit on its bottom edge, of one bowing down on its top edge
@@ -190,18 +199,21 @@ class MarksSynthesizer:
 
     # --- curves ---
 
-    def pick_curve(self, label: str, aspect: float) -> Glyph:
-        """The sample of the label whose width-to-height ratio is nearest
-        aspect, among a few drawn at random (so that a stretched sample keeps
-        about its stroke width)"""
+    def pick_curve(self, label: str, width: float, height: float) -> Glyph:
+        """The sample of the label shaped and sized most like the target
+        (millimetres), among a few drawn at random: stretched little, a
+        sample keeps its stroke; enlarged a lot, a small one turns blocky"""
         candidates = [
             self.glyph_synthesizer.create_glyph(label)
             for _ in range(CURVE_CANDIDATES)
         ]
 
         def mismatch(glyph: Glyph) -> float:
-            h, w = glyph.sprites[0].bitmap.shape[:2]
-            return abs(np.log((w / h) / aspect))
+            sprite = glyph.sprites[0]
+            h, w = sprite.bitmap.shape[:2]
+            target_h = mm_to_px(height, sprite.dpi)
+            return abs(np.log((w / h) / (width / height))) \
+                + abs(np.log(target_h / h))
 
         return min(candidates, key=mismatch)
 
@@ -216,7 +228,7 @@ class MarksSynthesizer:
     ):
         if end.x - start.x <= 0:
             return
-        sample = self.pick_curve(label, (end.x - start.x) / height)
+        sample = self.pick_curve(label, end.x - start.x, height)
         curve_glyph(sample, label, page_space, start, end, height, above)
 
     def synthesize_ties(self, system: SystemNotes):

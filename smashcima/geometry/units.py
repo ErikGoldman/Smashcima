@@ -1,7 +1,7 @@
 from typing import Union
 
 
-MILLIMETERS_IN_INCH = 24.4
+MILLIMETERS_IN_INCH = 25.4
 "The number of millimeters in one inch"
 
 

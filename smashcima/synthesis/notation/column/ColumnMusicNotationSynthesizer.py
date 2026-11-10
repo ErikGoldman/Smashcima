@@ -500,10 +500,8 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
                         staff = Notehead.of_note(chord.notes[0]).staff
                         chords_by_staff.setdefault(staves.index(staff), []).append(chord)
         lengths = StemLengths(self.stem_model, self.rng)
-        for staff_index, chords in chords_by_staff.items():
-            staff = staves[staff_index]
-            left = page_space.transform_from(staff.space).apply_to(Point(0, 0)).x
-            lengths.predict_staff(chords, page_space, left)
+        for chords in chords_by_staff.values():
+            lengths.predict_staff(chords, page_space)
         return lengths
 
     def system_notes(

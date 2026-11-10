@@ -45,6 +45,12 @@ class _NoteheadContext:
     "Horizontal notehead column position: -1, 0, +1 for the three columns"
 
 
+def serves_both_stem_directions(notehead: Notehead) -> bool:
+    """A unison of an up-stem voice and a down-stem voice, drawn once"""
+    stems = {Chord.of_note(note).stem_value for note in notehead.notes}
+    return StemValue.up in stems and StemValue.down in stems
+
+
 class NoteheadsColumn(ColumnBase):
     def __post_init__(self) -> None:
         self.notehead_contexts: List[_NoteheadContext] = []
@@ -106,9 +112,10 @@ class NoteheadsColumn(ColumnBase):
             ctx.notehead.up_stem_attachment_side = NoteheadSide.right
             ctx.notehead.down_stem_attachment_side = NoteheadSide.left
 
-            # if the previous pitch was kicked off,
-            # then the current does not need to be
-            if last_was_kicked_off:
+            # if the previous pitch was kicked off, then the current does
+            # not need to be; a head that voices with opposite stems share
+            # must not be, as it keeps a side for each stem
+            if last_was_kicked_off or serves_both_stem_directions(ctx.notehead):
                 last_was_kicked_off = False
                 last_linear_pitch = linear_pitch
                 continue

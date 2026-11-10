@@ -278,6 +278,10 @@ class MusicXmlLoader:
         assert self._part_state is not None
         assert self._measure_state is not None
 
+        if _is_hidden_rest(note_element):
+            self._skip_hidden_rest(note_element)
+            return
+
         # === decode the context ===
 
         e = _DecodedNoteElement(
@@ -590,6 +594,16 @@ class MusicXmlLoader:
         # modify measure state
         self._measure_state.seek_forward(fractional_duration)
     
+    def _skip_hidden_rest(self, note_element: ET.Element):
+        """An invisible rest takes its time and draws nothing, as a
+        <forward> does"""
+        duration = note_element.findtext("duration")
+        assert duration is not None, "A hidden rest lacks its <duration>"
+        self._measure_state.seek_forward(
+            Fraction(int(duration), self._part_state.divisions)
+        )
+        self._measure_state.last_chord = None
+
     def _load_print(self, print_element: ET.Element):
         assert print_element.tag == "print"
         assert self._score_state is not None
@@ -633,10 +647,7 @@ class _DecodedNoteElement:
         self.articulations = self._articulations()
         self.tie_starts, self.tie_stops = self._ties()
 
-        self.fractional_duration: Fraction = (
-            # use the measure length, or 4 beats as a default if not known
-            self._part_state.measure_fractional_duration or Fraction(4, 1)
-        ) \
+        self.fractional_duration: Fraction = self._measure_rest_duration() \
             if self.is_measure_rest \
             else self._decode_fractional_duration(
                 type_duration=self.type_duration,
@@ -797,6 +808,14 @@ class _DecodedNoteElement:
                  for t in self.note_element.findall("notations/tied")]
         return "start" in kinds, "stop" in kinds
 
+    def _measure_rest_duration(self) -> Fraction:
+        """The rest's own <duration>, which any <backup> after it counts
+        from; else the measure length, or 4 beats if no time is known"""
+        duration = self.note_element.findtext("duration")
+        if duration is not None and self._part_state.divisions is not None:
+            return Fraction(int(duration), self._part_state.divisions)
+        return self._part_state.measure_fractional_duration or Fraction(4, 1)
+
     def _decode_fractional_duration(
         self,
         type_duration: TypeDuration,
@@ -817,6 +836,11 @@ class _DecodedNoteElement:
             fractional_duration *= time_modification
         
         return fractional_duration
+
+
+def _is_hidden_rest(note_element: ET.Element) -> bool:
+    return note_element.find("rest") is not None \
+        and note_element.attrib.get("print-object") == "no"
 
 
 def _tuplet_actual_notes(note_element: ET.Element, tuplet_element: ET.Element) -> int:
