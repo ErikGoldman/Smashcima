@@ -1,6 +1,5 @@
 import numpy as np
 import random
-import heapq
 
 
 class Quilter:
@@ -90,55 +89,51 @@ class Quilter:
         dy, dx, _ = patch.shape
         minCut = np.zeros_like(patch, dtype=bool)
 
+        # float before subtracting: uint8 differences wrap around
+        patch_f = patch.astype(np.float32)
+        canvas_f = canvas[y:y+dy, x:x+dx].astype(np.float32)
+
         if x > 0:
-            left = (patch[:, :overlap] - canvas[y:y+dy, x:x+overlap]) / 255.0
+            left = (patch_f[:, :overlap] - canvas_f[:, :overlap]) / 255.0
             leftL2 = np.sum(left**2, axis=2)
-            for i, j in enumerate(self.dijkstra_path(leftL2)):
+            for i, j in enumerate(self.min_error_path(leftL2)):
                 minCut[i, :j] = True
 
         if y > 0:
-            up = (patch[:overlap, :] - canvas[y:y+overlap, x:x+dx]) / 255.0
+            up = (patch_f[:overlap, :] - canvas_f[:overlap, :]) / 255.0
             upL2 = np.sum(up**2, axis=2)
-            for j, i in enumerate(self.dijkstra_path(upL2.T)):
+            for j, i in enumerate(self.min_error_path(upL2.T)):
                 minCut[:i, j] = True
 
         np.copyto(patch, canvas[y:y+dy, x:x+dx], where=minCut)
 
         return patch
 
-    def dijkstra_path(
-        self,
-        errors: np.ndarray
-    ):
+    @staticmethod
+    def min_error_path(errors: np.ndarray) -> np.ndarray:
         """
-        Dijkstra's algorithm for finding the shortest path in a graph vertically.
+        The top-to-bottom path of least summed error, moving at most one column
+        per row: the column index for each row. Dynamic programming over rows.
         """
-        pq = [(error, [i]) for i, error in enumerate(errors[0])]
-        heapq.heapify(pq)
-
         h, w = errors.shape
-        seen = set()
-
-        while pq:
-            error, path = heapq.heappop(pq)
-            curDepth = len(path)
-            curIndex = path[-1]
-
-            if curDepth == h:
-                return path
-
-            for delta in -1, 0, 1:
-                nextIndex = curIndex + delta
-
-                if 0 <= nextIndex < w:
-                    if (curDepth, nextIndex) not in seen:
-                        cumError = error + errors[curDepth, nextIndex]
-                        heapq.heappush(pq, (cumError, path + [nextIndex]))
-                        seen.add((curDepth, nextIndex))
+        cost = errors[0].astype(np.float64)
+        came_from = np.zeros((h, w), dtype=np.int64)
+        columns = np.arange(w)
+        for row in range(1, h):
+            left = np.concatenate(([np.inf], cost[:-1]))
+            right = np.concatenate((cost[1:], [np.inf]))
+            step = np.argmin(np.stack((left, cost, right)), axis=0) - 1
+            came_from[row] = columns + step
+            cost = cost[came_from[row]] + errors[row]
+        path = np.empty(h, dtype=np.int64)
+        path[-1] = int(np.argmin(cost))
+        for row in range(h - 1, 0, -1):
+            path[row - 1] = came_from[row, path[row]]
+        return path
     
     def random_patch(self, source_texture: np.ndarray, block_size_px: int):
         """Take a random square block patch from the source texture"""
         h, w, _ = source_texture.shape
-        i = np.random.randint(h - block_size_px)
-        j = np.random.randint(w - block_size_px)
+        i = self.rng.randrange(h - block_size_px)
+        j = self.rng.randrange(w - block_size_px)
         return source_texture[i:i+block_size_px, j:j+block_size_px]

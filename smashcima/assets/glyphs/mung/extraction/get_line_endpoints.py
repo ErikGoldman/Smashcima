@@ -41,10 +41,6 @@ def get_line_endpoints(mask: np.ndarray) -> List[Point]:
     # get only the pixels where the neighbor count is 1
     neighbor_count[neighbor_count != 1] = 0
 
-    # enumerate these points
-    cv_points = cv2.findNonZero(neighbor_count)
-
-    if cv_points is None:
-        return []
-
-    return [Point(x, y) for x, y in cv_points.squeeze(axis=1)]
+    # numpy, not cv2.findNonZero: OpenCV 5 changed the shape findNonZero returns
+    ys, xs = np.nonzero(neighbor_count)
+    return [Point(int(x), int(y)) for x, y in zip(xs, ys)]
