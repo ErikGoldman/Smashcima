@@ -1,6 +1,6 @@
 from types import FunctionType
 import punq
-from typing import Callable, List, Optional, Set, TypeVar, Type, Union
+from typing import Callable, Dict, List, Optional, TypeVar, Type, Union
 
 
 T = TypeVar("T")
@@ -22,7 +22,11 @@ class Container:
 
     def __init__(self, register_itself=True) -> None:
         self._container = punq.Container()
-        self._registered_types: Set[Type] = set()
+        # A dict, not a set, to keep registration order: types hash by memory address, so a
+        # set listed them in a different order in every process, and the Styler, which picks
+        # each style domain from the shared rng in this order, drew different writers and
+        # papers for the same seed.
+        self._registered_types: Dict[Type, None] = {}
 
         # register the container itself into the container
         if register_itself:
@@ -39,7 +43,7 @@ class Container:
         :param instance_type: The service type the instance should be bound to.
         :param instance: The instance that should be returned when resolving.
         """
-        self._registered_types.add(instance_type)
+        self._registered_types[instance_type] = None
         self._container.register(
             service=instance_type,
             instance=instance
@@ -53,7 +57,7 @@ class Container:
         
         :param concrete_type: The type to be registered.
         """
-        self._registered_types.add(concrete_type)
+        self._registered_types[concrete_type] = None
         self._container.register(
             service=concrete_type,
             scope=punq.Scope.singleton
@@ -105,7 +109,7 @@ class Container:
         :param concrete_type: The type to be resolved.
         :param factory: The factory that constructs that type.
         """
-        self._registered_types.add(concrete_type)
+        self._registered_types[concrete_type] = None
         self._container.register(
             service=concrete_type,
             factory=factory,

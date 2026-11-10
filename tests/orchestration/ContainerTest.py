@@ -192,3 +192,13 @@ class ContainerTest(unittest.TestCase):
 
         assert core is not None
         assert resolved is core
+
+    def test_it_lists_types_in_registration_order(self):
+        # The Styler draws each style domain from the shared rng in this order, so it must
+        # not depend on the types' memory addresses.
+        c = Container(register_itself=False)
+        types = [type(f"_Service{i}", (), {}) for i in range(50)]
+        for t in types:
+            c.type(t)
+
+        assert c.registered_types == types
