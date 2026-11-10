@@ -8,7 +8,6 @@ from smashcima.random_between import random_between
 from smashcima.scene.Glyph import Glyph
 from smashcima.scene.SmuflLabels import SmuflLabels
 from smashcima.scene.semantic.Clef import Clef
-from smashcima.scene.semantic.KeySignature import KeySignature
 from smashcima.scene.semantic.Score import Score
 from smashcima.scene.semantic.TimeSignature import TimeSignature, TimeSymbol
 from smashcima.scene.visual.StaffVisual import StaffVisual

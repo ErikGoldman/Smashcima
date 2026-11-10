@@ -10,7 +10,6 @@ import numpy as np
 from smashcima.geometry.Point import Point
 from smashcima.geometry.Rectangle import Rectangle
 from smashcima.geometry.Transform import Transform
-from smashcima.geometry.Vector2 import Vector2
 from smashcima.geometry.units import mm_to_px
 from smashcima.scene.AffineSpace import AffineSpace
 from smashcima.scene.Glyph import Glyph
@@ -20,8 +19,6 @@ from smashcima.scene.Sprite import Sprite
 from smashcima.scene.semantic.Chord import Chord
 from smashcima.scene.semantic.Durable import Durable
 from smashcima.scene.semantic.Note import Note
-from smashcima.scene.semantic.RestSemantic import RestSemantic
-from smashcima.scene.semantic.Score import Score
 from smashcima.scene.semantic.Slur import Slur
 from smashcima.scene.semantic.StemValue import StemValue
 from smashcima.scene.semantic.Tuplet import Tuplet
@@ -37,6 +34,9 @@ ARTICULATION_LABELS = {
     "accent": SmuflLabels.articAccentAbove.value,
     "tenuto": SmuflLabels.articTenutoAbove.value,
 }
+
+MAX_THICKENING_PX = 3
+"At most this much is put back: more swells a curve's steep ends into blobs"
 
 CURVE_CANDIDATES = 8
 "Curve samples drawn per tie or slur; the one shaped most like the target wins"
@@ -114,7 +114,7 @@ def with_pen_width_of(curve: np.ndarray, sample: np.ndarray) -> np.ndarray:
     the sample's stroke, which squashing it thinned"""
     alpha = np.where(curve[:, :, 3] > 40, 255, 0).astype(np.uint8)
     solid = np.dstack([np.zeros_like(alpha)] * 3 + [alpha])
-    missing = pen_width_px(sample) - pen_width_px(solid)
+    missing = min(MAX_THICKENING_PX, pen_width_px(sample) - pen_width_px(solid))
     if missing >= 1:
         kernel = np.ones((int(round(missing)) + 1, 1), np.uint8)
         solid[:, :, 3] = cv2.dilate(alpha, kernel)

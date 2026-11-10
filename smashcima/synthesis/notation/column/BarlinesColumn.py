@@ -5,6 +5,7 @@ from smashcima.scene.SmuflLabels import SmuflLabels
 from smashcima.scene.semantic.Barline import BarStyle
 from smashcima.scene.semantic.Score import Score
 from smashcima.synthesis.GlyphSynthesizer import GlyphSynthesizer
+from smashcima.synthesis.glyph.reshaping import scaled_to_height
 from .ColumnBase import ColumnBase
 from typing import Dict, List, Optional
 import random
@@ -87,11 +88,16 @@ def synthesize_barlines_column(
     column = BarlinesColumn(staves, rng.random())
 
     def glyph(staff: StaffVisual, label: str) -> Glyph:
-        return glyph_synthesizer.synthesize_glyph_at(
+        drawn = glyph_synthesizer.synthesize_glyph_at(
             label=label,
             parent_space=staff.space,
             point=Point(0, 0) # glyph positioned later
         )
+        if label in (THIN, HEAVY):
+            # MUSCIMA++ barlines may span several staves: one staff tall
+            staff_height = 4 * staff.staff_coordinate_system.staff_space
+            scaled_to_height(drawn, staff_height * rng.uniform(0.97, 1.05))
+        return drawn
 
     for staff_index, staff in enumerate(staves):
         for part in parts:
