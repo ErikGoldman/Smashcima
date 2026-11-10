@@ -6,7 +6,10 @@ from smashcima.scene.Glyph import Glyph
 from smashcima.scene.SmuflLabels import SmuflLabels
 from smashcima.synthesis.GlyphSynthesizer import GlyphSynthesizer
 from .ColumnBase import ColumnBase
-from typing import List, Set
+from smashcima.scene.semantic.Measure import Measure
+from smashcima.scene.semantic.Part import Part
+from smashcima.scene.semantic.ScoreEvent import ScoreEvent
+from typing import List, Optional, Set
 import random
 
 
@@ -87,6 +90,34 @@ def synthesize_header_clefs(
     return column
 
 
-def synthesize_change_clefs() -> ClefsColumn:
-    # TODO: synthesize clef changes (small clefs)
-    pass
+def synthesize_change_clefs(
+    staves: List[StaffVisual],
+    rng: random.Random,
+    glyph_synthesizer: GlyphSynthesizer,
+    score: Score,
+    score_event: ScoreEvent
+) -> Optional[ClefsColumn]:
+    """Small clefs on the staves whose clef changes at this event, or None"""
+    column = ClefsColumn(staves, rng.random())
+    for event in score_event.events:
+        change = event.attributes_change
+        previous = event.previous_attributes
+        if change is None or previous is None:
+            continue
+        part = Part.of_measure(Measure.of_event(event))
+        for staff_number, clef in change.clefs.items():
+            if previous.clefs[staff_number] == clef:
+                continue
+            staff_index = score.first_staff_index_of_part(part) \
+                + (staff_number - 1)
+            label = SmuflLabels.clef_from_clef_sign(
+                clef_sign=clef.sign,
+                small=True
+            ).value
+            glyph = glyph_synthesizer.synthesize_glyph_at(
+                label=label,
+                parent_space=staves[staff_index].space,
+                point=Point(0, 0) # glyph positioned later
+            )
+            column.add_clef(clef, glyph)
+    return column if len(column.clefs) > 0 else None

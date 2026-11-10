@@ -44,6 +44,7 @@ class Part(SceneObject):
 
                 # non-first event
                 else:
+                    event.previous_attributes = attributes
                     if event.attributes_change:
                         attributes = attributes.apply_change(
                             event.attributes_change

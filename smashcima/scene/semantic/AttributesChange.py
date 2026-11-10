@@ -21,3 +21,11 @@ class AttributesChange:
     time_signature: Optional[TimeSignature] = None
     """Time signature, None means unspecified time signature, i.e. measures
     have unknown or variable number of beats"""
+
+    def merged_with(self, later: "AttributesChange") -> "AttributesChange":
+        """This change followed by a later one at the same onset"""
+        return AttributesChange(
+            clefs={**self.clefs, **later.clefs},
+            keys={**self.keys, **later.keys},
+            time_signature=later.time_signature or self.time_signature
+        )

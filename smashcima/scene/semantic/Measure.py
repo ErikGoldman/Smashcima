@@ -42,8 +42,12 @@ class Measure(SceneObject):
         change: AttributesChange,
         onset: Fraction
     ):
-        """Adds an attributes change into the measure"""
+        """Adds an attributes change into the measure, merged into any change
+        already at that onset (a measure may hold several <attributes>
+        elements at one onset, e.g. one per staff)"""
         event = self.get_or_create_event(onset)
+        if event.attributes_change is not None:
+            change = event.attributes_change.merged_with(change)
         event.attributes_change = change
 
     def add_durable(

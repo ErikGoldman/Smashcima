@@ -22,6 +22,11 @@ class Event(SceneObject):
     only during the parsing of a score. This value is populated when a part
     is parsed by calling Part.compute_event_attributes()"""
 
+    previous_attributes: Optional[Attributes] = None
+    """State of attributes just before this event (None for the first event
+    of a part), to tell a real change from a restatement. Populated with
+    `attributes`."""
+
     attributes_change: Optional[AttributesChange] = None
     """Change of attributes when entering this event. If None, there is no
     change on this event."""

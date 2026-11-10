@@ -27,10 +27,12 @@ from ...LineSynthesizer import LineSynthesizer
 from ...MusicNotationSynthesizer import MusicNotationSynthesizer
 from ..BeamStemSynthesizer import BeamStemSynthesizer
 from .BarlinesColumn import synthesize_barlines_column
-from .ClefsColumn import synthesize_header_clefs
+from .ClefsColumn import synthesize_change_clefs, synthesize_header_clefs
 from .Column import Column
 from .ColumnBase import ColumnBase
 from .EventColumn import synthesize_event_column
+from .SignaturesColumn import synthesize_key_signatures, \
+    synthesize_time_signatures
 
 
 class _SystemState:
@@ -236,14 +238,7 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
         )
         available_width = min(sf.width for sf in staves)
 
-        # synthesize header = start of the system signatures
-        # TODO: extract this into a method
-        state.append_column(
-            synthesize_header_clefs(
-                staves, self.rng, self.glyph_synthesizer,
-                score, start_on_measure
-            )
-        )
+        self.synthesize_system_header(state, staves, score, start_on_measure)
 
         # synthesize measures...
         next_measure_index = start_on_measure
@@ -267,13 +262,24 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
 
             state.enter_measure(next_measure_index)
             score_measure = score.get_score_measure(next_measure_index)
+            if next_measure_index != start_on_measure:
+                self.synthesize_signature_changes(
+                    state, staves, score, next_measure_index
+                )
             next_measure_index += 1
 
             # TODO: extract this into a method, there's going to be a lot
             # of code here eventually (synthesize_measure)
 
             # construct a column for each event
-            for score_event in score_measure.events:
+            for event_index, score_event in enumerate(score_measure.events):
+                is_system_start = next_measure_index - 1 == start_on_measure \
+                    and event_index == 0
+                clefs = None if is_system_start else synthesize_change_clefs(
+                    staves, self.rng, self.glyph_synthesizer, score, score_event
+                )
+                if clefs is not None:
+                    state.append_column(clefs)
                 state.append_column(
                     synthesize_event_column(
                         staves, self.rng, self.glyph_synthesizer,
@@ -403,6 +409,58 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
 
         return system
     
+    def synthesize_system_header(
+        self,
+        state: _SystemState,
+        staves: List[StaffVisual],
+        score: Score,
+        measure_index: int
+    ):
+        """Clefs and key signatures on every staff, then the time signature
+        if the measure sets one."""
+        state.append_column(
+            synthesize_header_clefs(
+                staves, self.rng, self.glyph_synthesizer,
+                score, measure_index
+            )
+        )
+        self.synthesize_signatures(
+            state, staves, score, measure_index, keys_changed_only=False
+        )
+
+    def synthesize_signature_changes(
+        self,
+        state: _SystemState,
+        staves: List[StaffVisual],
+        score: Score,
+        measure_index: int
+    ):
+        """Key and time signatures that change at the start of a measure
+        within the system."""
+        self.synthesize_signatures(
+            state, staves, score, measure_index, keys_changed_only=True
+        )
+
+    def synthesize_signatures(
+        self,
+        state: _SystemState,
+        staves: List[StaffVisual],
+        score: Score,
+        measure_index: int,
+        keys_changed_only: bool
+    ):
+        keys = synthesize_key_signatures(
+            staves, self.rng, self.glyph_synthesizer,
+            score, measure_index, keys_changed_only
+        )
+        if keys is not None:
+            state.append_column(keys)
+        times = synthesize_time_signatures(
+            staves, self.rng, self.glyph_synthesizer, score, measure_index
+        )
+        if times is not None:
+            state.append_column(times)
+
     def synthesize_flags_in_measure(
         self,
         page_space: AffineSpace,
