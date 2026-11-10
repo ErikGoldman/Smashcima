@@ -3,7 +3,11 @@ from ..scene.semantic.Score import Score
 from ..scene.semantic.Part import Part
 from ..scene.semantic.Measure import Measure
 from ..scene.semantic.Note import Note
+from ..scene.semantic.Slur import Slur
+from ..scene.semantic.Tuplet import Tuplet
+from ..scene.semantic.Barline import BarStyle
 from ..scene.semantic.RestSemantic import RestSemantic
+from ..scene.semantic.Durable import Durable
 from ..scene.semantic.MeasureRest import MeasureRest
 from ..scene.semantic.TypeDuration import TypeDuration
 from ..scene.semantic.Pitch import Pitch
@@ -59,6 +63,12 @@ class _PartState:
     measure_fractional_duration: Optional[Fraction] = None
     "How many quarter notes does a whole measure take up"
 
+    open_slurs: Dict[str, Slur] = field(default_factory=dict)
+    "Slurs begun and not yet ended, by MusicXML slur number"
+
+    open_tuplets: Dict[str, Tuplet] = field(default_factory=dict)
+    "Tuplets begun and not yet ended, by MusicXML tuplet number"
+
 
 @dataclass
 class _MeasureState:
@@ -96,8 +106,11 @@ class _MeasureState:
 IGNORED_MEASURE_ELEMENTS = set([
     # https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/measure-partwise/
     "direction", "harmony", "figured-bass", "sound", "listening",
-    "grouping", "link", "bookmark", "barline"
+    "grouping", "link", "bookmark"
 ])
+
+DRAWN_ARTICULATIONS = ["staccato", "accent", "tenuto"]
+"MusicXML articulations that are loaded onto notes (and drawn)"
 
 
 class MusicXmlLoader:
@@ -242,6 +255,8 @@ class MusicXmlLoader:
                 self._load_forward(element)
             elif element.tag == "print":
                 self._load_print(element)
+            elif element.tag == "barline":
+                self._load_barline(element)
             else:
                 self._error(
                     "Unexpected <measure> element:",
@@ -334,16 +349,18 @@ class MusicXmlLoader:
         
         # handle rests
         if e.pitch is None:
+            rest = RestSemantic(
+                type_duration=e.type_duration,
+                augmentation_dots=e.duration_dots,
+                fractional_duration=e.fractional_duration,
+                display_pitch=e.display_pitch
+            )
             self._measure_state.measure.add_durable(
-                durable=RestSemantic(
-                    type_duration=e.type_duration,
-                    augmentation_dots=e.duration_dots,
-                    fractional_duration=e.fractional_duration,
-                    display_pitch=e.display_pitch
-                ),
+                durable=rest,
                 onset=onset,
                 staff_number=e.staff_number
             )
+            self._load_tuplets(note_element, rest)
             return
         
         # handle notes
@@ -353,16 +370,73 @@ class MusicXmlLoader:
             augmentation_dots=e.duration_dots,
             fractional_duration=e.fractional_duration,
             accidental_value=e.accidental_value,
+            articulations=e.articulations,
+            tie_starts=e.tie_starts,
+            tie_stops=e.tie_stops,
         )
         self._measure_state.measure.add_durable(
             durable=note,
             onset=onset,
             staff_number=e.staff_number
         )
+        self._load_tuplets(note_element, note)
+        self._load_slurs(note_element, note)
 
         assert current_chord is not None
         current_chord.add_note(note, e.stem_value)
     
+    def _load_tuplets(self, note_element: ET.Element, durable: Durable):
+        """Starts, extends and ends tuplet groups with this note or rest.
+        A chord's other notes (with <chord/>) do not join the group."""
+        assert self._part_state is not None
+        if note_element.find("chord") is not None:
+            return
+        open_tuplets = self._part_state.open_tuplets
+        tuplet_elements = note_element.findall("notations/tuplet")
+        for tuplet_element in tuplet_elements:
+            if tuplet_element.attrib.get("type") == "start":
+                open_tuplets[tuplet_element.attrib.get("number", "1")] = Tuplet(
+                    actual_notes=_tuplet_actual_notes(note_element, tuplet_element),
+                    number_shown=tuplet_element.attrib.get("show-number") != "none",
+                    placement=tuplet_element.attrib.get("placement")
+                )
+        for tuplet in open_tuplets.values():
+            tuplet.durables = tuplet.durables + [durable]
+        for tuplet_element in tuplet_elements:
+            if tuplet_element.attrib.get("type") == "stop":
+                open_tuplets.pop(tuplet_element.attrib.get("number", "1"), None)
+
+    def _load_slurs(self, note_element: ET.Element, note: Note):
+        assert self._part_state is not None
+        open_slurs = self._part_state.open_slurs
+        for slur_element in note_element.findall("notations/slur"):
+            number = slur_element.attrib.get("number", "1")
+            kind = slur_element.attrib.get("type")
+            if kind == "start":
+                open_slurs[number] = Slur(
+                    start=note,
+                    placement=slur_element.attrib.get("placement")
+                )
+            elif kind == "stop":
+                slur = open_slurs.pop(number, None)
+                if slur is None:  # begun before the loaded music
+                    slur = Slur(placement=slur_element.attrib.get("placement"))
+                slur.end = note
+
+    def _load_barline(self, barline_element: ET.Element):
+        assert self._measure_state is not None
+        measure = self._measure_state.measure
+        direction = barline_element.find("repeat")
+        if direction is not None:
+            if direction.attrib.get("direction") == "forward":
+                measure.repeat_start = True
+            elif direction.attrib.get("direction") == "backward":
+                measure.repeat_end = True
+        style = barline_element.findtext("bar-style")
+        if barline_element.attrib.get("location", "right") == "right" \
+                and style in {s.value for s in BarStyle}:
+            measure.right_bar_style = BarStyle(style)
+
     def _load_attributes(self, attributes_element: ET.Element):
         # https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/attributes/
         assert attributes_element.tag == "attributes"
@@ -556,6 +630,8 @@ class _DecodedNoteElement:
         self.stem_value = self._stem()
         self.staff_number = self._staff()
         self.beam_values = self._beam()
+        self.articulations = self._articulations()
+        self.tie_starts, self.tie_stops = self._ties()
 
         self.fractional_duration: Fraction = (
             # use the measure length, or 4 beats as a default if not known
@@ -707,8 +783,19 @@ class _DecodedNoteElement:
             values[n] = v
         return values
 
-    # TODO: <tied>
-    # TODO: <tuplet>
+    # <notations><articulations>
+    def _articulations(self) -> List[str]:
+        return [
+            name for name in DRAWN_ARTICULATIONS
+            if self.note_element.find(f"notations/articulations/{name}")
+                is not None
+        ]
+
+    # <notations><tied> (what is drawn; <tie> is only for playback)
+    def _ties(self) -> Tuple[bool, bool]:
+        kinds = [t.attrib.get("type")
+                 for t in self.note_element.findall("notations/tied")]
+        return "start" in kinds, "stop" in kinds
 
     def _decode_fractional_duration(
         self,
@@ -730,3 +817,10 @@ class _DecodedNoteElement:
             fractional_duration *= time_modification
         
         return fractional_duration
+
+
+def _tuplet_actual_notes(note_element: ET.Element, tuplet_element: ET.Element) -> int:
+    """The tuplet's number: <tuplet-actual>, else the note's time modification"""
+    number = tuplet_element.findtext("tuplet-actual/tuplet-number") \
+        or note_element.findtext("time-modification/actual-notes")
+    return int(number) if number else 3

@@ -22,6 +22,8 @@ class SmuflLabels(str, Enum):
     # Barlines
     # https://w3c.github.io/smufl/latest/tables/barlines.html
     barlineSingle = "smufl::barlineSingle"
+    barlineHeavy = "smufl::barlineHeavy"
+    repeatDot = "smufl::repeatDot"
 
     # Clefs
     # https://w3c.github.io/smufl/latest/tables/clefs.html
@@ -46,6 +48,10 @@ class SmuflLabels(str, Enum):
     timeSig9 = "smufl::timeSig9"
     timeSigCommon = "smufl::timeSigCommon"
     timeSigCutCommon = "smufl::timeSigCutCommon"
+
+    # Tuplets
+    # https://w3c.github.io/smufl/latest/tables/tuplets.html
+    tuplet3 = "smufl::tuplet3"
 
     # Noteheads
     # https://w3c.github.io/smufl/latest/tables/noteheads.html

@@ -27,7 +27,16 @@ from .get_symbols import \
     get_staccato_dots, \
     get_accidentals, \
     get_brackets_and_braces, \
-    get_time_marks
+    get_time_marks, \
+    get_ties, \
+    get_slurs, \
+    get_accents, \
+    get_tenutos, \
+    get_thick_barlines, \
+    get_repeat_dots, \
+    get_tuplet_threes, \
+    get_loose_numerals
+from .test_sets import TEST_DOCUMENTS
 from .MppGlyphMetadata import MppGlyphMetadata
 from pathlib import Path
 import pickle
@@ -46,6 +55,11 @@ class MuscimaPPGlyphs(AssetBundle):
 
         self.muscima_pp = self.dependency_resolver.resolve_bundle(MuscimaPP)
 
+    def version(self) -> int:
+        # 2: ties, slurs, tuplet 3s, accents, tenutos, heavy barlines,
+        # repeat dots, loose 0s and 1s; MUSCIMA++ v2 test pages left out
+        return 2
+
     @property
     def symbol_repository_path(self) -> Path:
         return self.bundle_directory / "symbol_repository.pkl"
@@ -53,9 +67,11 @@ class MuscimaPPGlyphs(AssetBundle):
     def install(self) -> None:
         """Extracts data from the MUSCIMA++ dataset and bundles it up
         in the symbol repository in a pickle file."""
-        document_paths = list(
+        document_paths = [
+            path for path in
             self.muscima_pp.cropobjects_directory.glob("CVC-MUSCIMA_*-ideal.xml")
-        )
+            if path.stem not in TEST_DOCUMENTS
+        ]
 
         items: List[Any] = []
 
@@ -84,6 +100,14 @@ class MuscimaPPGlyphs(AssetBundle):
             items += get_accidentals(page)
             items += get_brackets_and_braces(page)
             items += get_time_marks(page)
+            items += get_loose_numerals(page)
+            items += get_ties(page)
+            items += get_slurs(page)
+            items += get_accents(page)
+            items += get_tenutos(page)
+            items += get_thick_barlines(page)
+            items += get_repeat_dots(page)
+            items += get_tuplet_threes(page)
             # (flags must come after stems)
             glyphs_8th_flag, glyphs_16th_flag = get_flags(page)
             items += glyphs_8th_flag

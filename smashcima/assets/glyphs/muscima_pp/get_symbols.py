@@ -790,3 +790,78 @@ def get_time_marks(page: MppPage) -> List[Glyph]:
             )
 
     return glyphs
+
+
+def _glyphs_of_class(page: MppPage, clsname: str, label: str) -> List[Glyph]:
+    return _crop_objects_to_single_sprite_glyphs(
+        crop_objects=[o for o in page.crop_objects if o.clsname == clsname],
+        page=page,
+        label=label
+    )
+
+
+def get_ties(page: MppPage) -> List[Glyph]:
+    """Ties as whole curves, to be stretched between their noteheads"""
+    return _glyphs_of_class(page, "tie", SmashcimaLabels.tie.value)
+
+
+def get_slurs(page: MppPage) -> List[Glyph]:
+    """Slurs as whole curves, to be stretched between their noteheads"""
+    return _glyphs_of_class(page, "slur", SmashcimaLabels.slur.value)
+
+
+def get_accents(page: MppPage) -> List[Glyph]:
+    return _glyphs_of_class(page, "accent", SmuflLabels.articAccentAbove.value)
+
+
+def get_tenutos(page: MppPage) -> List[Glyph]:
+    return _glyphs_of_class(page, "tenuto", SmuflLabels.articTenutoAbove.value)
+
+
+def get_thick_barlines(page: MppPage) -> List[Glyph]:
+    return _glyphs_of_class(page, "thick_barline", SmuflLabels.barlineHeavy.value)
+
+
+def get_repeat_dots(page: MppPage) -> List[Glyph]:
+    return _glyphs_of_class(page, "repeat-dot", SmuflLabels.repeatDot.value)
+
+
+def get_tuplet_threes(page: MppPage) -> List[Glyph]:
+    """The 3s of triplet marks"""
+    threes = []
+    for o in page.crop_objects:
+        if o.clsname != "tuple":
+            continue
+        threes += [
+            page.get(link) for link in o.outlinks
+            if page.get(link).clsname == "numeral_3"
+        ]
+    return _crop_objects_to_single_sprite_glyphs(
+        crop_objects=threes,
+        page=page,
+        label=SmuflLabels.tuplet3.value
+    )
+
+
+def get_loose_numerals(page: MppPage) -> List[Glyph]:
+    """Zeros and ones outside time signatures (MUSCIMA++'s time signatures
+    have none), as time signature digits"""
+    in_time_signatures = set()
+    for o in page.crop_objects:
+        if o.clsname == "time_signature":
+            in_time_signatures.update(o.outlinks)
+    labels = {
+        "numeral_0": SmuflLabels.timeSig0.value,
+        "numeral_1": SmuflLabels.timeSig1.value,
+    }
+    glyphs: List[Glyph] = []
+    for clsname, label in labels.items():
+        glyphs += _crop_objects_to_single_sprite_glyphs(
+            crop_objects=[
+                o for o in page.crop_objects
+                if o.clsname == clsname and o.objid not in in_time_signatures
+            ],
+            page=page,
+            label=label
+        )
+    return glyphs

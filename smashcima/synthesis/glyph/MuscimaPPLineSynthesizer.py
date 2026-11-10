@@ -16,6 +16,10 @@ LABEL_MAP: Dict[str, str] = {
     SmuflLabels.stem.value: SmuflLabels.stem.value,
     SmashcimaLabels.beam.value: SmashcimaLabels.beam.value,
     SmashcimaLabels.beamHook.value: SmashcimaLabels.beamHook.value,
+    SmuflLabels.brace.value: SmuflLabels.brace.value,
+    SmuflLabels.bracket.value: SmuflLabels.bracket.value,
+    # drawn with stem strokes, for want of MUSCIMA++ samples of its own
+    SmashcimaLabels.systemStartLine.value: SmuflLabels.stem.value,
 }
 
 

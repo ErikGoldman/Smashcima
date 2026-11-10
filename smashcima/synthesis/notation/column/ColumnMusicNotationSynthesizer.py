@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from smashcima.geometry.Contours import Contours
 from smashcima.geometry.Point import Point
+from smashcima.geometry.Vector2 import Vector2
 from smashcima.geometry.Polygon import Polygon
 from smashcima.scene.AffineSpace import AffineSpace
 from smashcima.scene.LabeledRegion import LabeledRegion
@@ -26,7 +27,9 @@ from ...GlyphSynthesizer import GlyphSynthesizer
 from ...LineSynthesizer import LineSynthesizer
 from ...MusicNotationSynthesizer import MusicNotationSynthesizer
 from ..BeamStemSynthesizer import BeamStemSynthesizer
-from .BarlinesColumn import synthesize_barlines_column
+from ..MarksSynthesizer import MarksSynthesizer, SystemNotes
+from .BarlinesColumn import barline_parts, measure_barline_parts, \
+    synthesize_barlines_column
 from .ClefsColumn import synthesize_change_clefs, synthesize_header_clefs
 from .Column import Column
 from .ColumnBase import ColumnBase
@@ -146,6 +149,7 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
         self.line_synthesizer = line_synthesizer
         self.beam_stem_synthesizer = beam_stem_synthesizer
         self.rng = rng
+        self.marks_synthesizer = MarksSynthesizer(glyph_synthesizer, rng)
 
         # The following values control the synthesizer.
         # The page-flowing options are set to respect explicit breaks
@@ -231,6 +235,8 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
             assert staff_visual.space.parent_space is page_space, \
                 "Given staves do not live in the given page space"
 
+        self.synthesize_system_start(score, staves)
+
         # === phase 1: synthesizing columns ===
 
         state = _SystemState(
@@ -239,6 +245,7 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
         available_width = min(sf.width for sf in staves)
 
         self.synthesize_system_header(state, staves, score, start_on_measure)
+        header_columns = list(state.columns)
 
         # synthesize measures...
         next_measure_index = start_on_measure
@@ -288,9 +295,18 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
                 )
             
             # column for the barlines
+            system_ends = next_measure_index >= score.measure_count or (
+                self.respect_line_and_page_breaks and (
+                    next_measure_index in score.new_system_measure_indices
+                    or next_measure_index in score.new_page_measure_indices
+                )
+            )
             state.append_column(
                 synthesize_barlines_column(
-                    staves, self.rng, self.glyph_synthesizer
+                    staves, self.rng, self.glyph_synthesizer,
+                    measure_barline_parts(
+                        score, next_measure_index - 1, system_ends
+                    )
                 )
             )
 
@@ -402,13 +418,83 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
                 score_measure
             )
         
-        # === phase 5: replacing ligatures ===
+        # === phase 5: ties, slurs, tuplet numbers, articulations ===
+
+        self.marks_synthesizer.synthesize_marks(
+            self.system_notes(
+                page_space, staves, score, system, header_columns,
+                available_width
+            )
+        )
+
+        # === phase 6: replacing ligatures ===
 
         # TODO: ligatures
         # (this should probbably be done somewhere else than here)
 
         return system
     
+    def synthesize_system_start(self, score: Score, staves: List[StaffVisual]):
+        """The line joining all the system's staves at its left edge, and a
+        brace before each part written on several staves (piano)"""
+        if len(staves) < 2:
+            return
+        page_space = staves[0].space.parent_space
+
+        def staff_edge(staff: StaffVisual, pitch_position: int) -> Point:
+            """Where a staff begins, on its top (4) or bottom (-4) line"""
+            return page_space.transform_from(staff.space).apply_to(
+                staff.staff_coordinate_system.get_transform(pitch_position, 0)
+                .apply_to(Point(0, 0))
+            )
+
+        self.line_synthesizer.synthesize_line(
+            label=SmashcimaLabels.systemStartLine.value,
+            parent_space=page_space,
+            start_point=staff_edge(staves[0], 4),
+            end_point=staff_edge(staves[-1], -4)
+        )
+        for part in score.parts:
+            if part.staff_count < 2:
+                continue
+            first = score.first_staff_index_of_part(part)
+            last = first + part.staff_count - 1
+            left = Vector2(-self.rng.uniform(1.0, 2.0), 0)  # mm
+            self.line_synthesizer.synthesize_line(
+                label=SmuflLabels.brace.value,
+                parent_space=page_space,
+                start_point=Point(*(staff_edge(staves[first], 4).vector + left)),
+                end_point=Point(*(staff_edge(staves[last], -4).vector + left))
+            )
+
+    def system_notes(
+        self,
+        page_space: AffineSpace,
+        staves: List[StaffVisual],
+        score: Score,
+        system: System,
+        header_columns: List[Column],
+        available_width: float
+    ) -> SystemNotes:
+        durables = [
+            durable
+            for i in range(system.measure_count)
+            for score_event in score.get_score_measure(
+                system.first_measure_index + i
+            ).events
+            for event in score_event.events
+            for durable in event.durables
+        ]
+        to_page = page_space.transform_from(staves[0].space)
+        header_end = max(c.time_position + c.right_width for c in header_columns)
+        return SystemNotes(
+            page_space=page_space,
+            staves=staves,
+            durables=durables,
+            left_x=to_page.apply_to(Point(header_end, 0)).x,
+            right_x=to_page.apply_to(Point(available_width, 0)).x
+        )
+
     def synthesize_system_header(
         self,
         state: _SystemState,
@@ -427,6 +513,16 @@ class ColumnMusicNotationSynthesizer(MusicNotationSynthesizer):
         self.synthesize_signatures(
             state, staves, score, measure_index, keys_changed_only=False
         )
+        opening_repeat = synthesize_barlines_column(
+            staves, self.rng, self.glyph_synthesizer,
+            barline_parts(
+                None,
+                repeat_end=False,
+                repeat_start=score.parts[0].measures[measure_index].repeat_start
+            )
+        )
+        if opening_repeat is not None:
+            state.append_column(opening_repeat)
 
     def synthesize_signature_changes(
         self,

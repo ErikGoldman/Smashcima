@@ -6,6 +6,7 @@ from .Event import Event
 from .StaffSemantic import StaffSemantic
 from .AttributesChange import AttributesChange
 from typing import List
+from .Barline import BarStyle
 
 
 @dataclass
@@ -17,6 +18,15 @@ class Measure(SceneObject):
 
     staves: List[StaffSemantic] = field(default_factory=list)
     """Links to all staves within this measure"""
+
+    right_bar_style: BarStyle = BarStyle.regular
+    "How the barline closing the measure is drawn"
+
+    repeat_start: bool = False
+    "A forward repeat sign opens the measure"
+
+    repeat_end: bool = False
+    "A backward repeat sign closes the measure"
 
     @property
     def first_event(self) -> Event:

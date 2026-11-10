@@ -11,6 +11,7 @@ from smashcima.scene.Sprite import Sprite
 from smashcima.synthesis.style.MuscimaPPStyleDomain import MuscimaPPStyleDomain
 
 from ...scene.SmuflLabels import SmuflLabels
+from ...scene.SmashcimaLabels import SmashcimaLabels
 from .RepositoryGlyphSynthesizer import RepositoryGlyphSynthesizer
 
 LABEL_MAP: Dict[str, str] = {
@@ -55,6 +56,20 @@ LABEL_MAP: Dict[str, str] = {
     # articulations (MUSCIMA++ does not tell above from below)
     SmuflLabels.articStaccatoAbove.value: SmuflLabels.articStaccatoBelow.value,
     SmuflLabels.articStaccatoBelow.value: SmuflLabels.articStaccatoBelow.value,
+
+    SmuflLabels.articAccentAbove.value: SmuflLabels.articAccentAbove.value,
+    SmuflLabels.articAccentBelow.value: SmuflLabels.articAccentAbove.value,
+    SmuflLabels.articTenutoAbove.value: SmuflLabels.articTenutoAbove.value,
+    SmuflLabels.articTenutoBelow.value: SmuflLabels.articTenutoAbove.value,
+
+    # curves, stretched to fit when drawn
+    SmashcimaLabels.tie.value: SmashcimaLabels.tie.value,
+    SmashcimaLabels.slur.value: SmashcimaLabels.slur.value,
+
+    # tuplets, barlines
+    SmuflLabels.tuplet3.value: SmuflLabels.tuplet3.value,
+    SmuflLabels.barlineHeavy.value: SmuflLabels.barlineHeavy.value,
+    SmuflLabels.repeatDot.value: SmuflLabels.repeatDot.value,
 
     # time signatures
     **{

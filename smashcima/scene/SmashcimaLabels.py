@@ -23,6 +23,9 @@ class SmashcimaLabels(str, Enum):
     beam = "smashcima::beam"
     beamHook = "smashcima::beamHook"
     slur = "smashcima::slur"
+    tie = "smashcima::tie"
+    systemStartLine = "smashcima::systemStartLine"
+    "The vertical line joining a system's staves at its left edge"
 
     # Layout Regions
     staff = "smashcima::staff"

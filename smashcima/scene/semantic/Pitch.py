@@ -36,9 +36,11 @@ class Step(str, Enum):
 class Alter(int, Enum):
     """Semitone alter number (based on MusicXML)"""
     # https://www.w3.org/2021/06/musicxml40/musicxml-reference/data-types/semitones/
+    double_flat = -2
     flat = -1
     none = 0
     sharp = 1
+    double_sharp = 2
 
 
 @dataclass
@@ -64,10 +66,7 @@ class Pitch:
         step_index = STEP_ORDER.index(self.step.value)
         linear_pitch = self.octave.value * len(STEP_ORDER) + step_index
         if with_alters:
-            if self.alter == Alter.sharp:
-                linear_pitch += 0.5
-            elif self.alter == Alter.flat:
-                linear_pitch -= 0.5
+            linear_pitch += self.alter.value / 2
         return linear_pitch
     
     @staticmethod
